@@ -9,7 +9,7 @@ from constants import (
     PLAYS_PER_TURN, DISCARDS_PER_TURN,
     STARTING_DECK_SIZE, SUITS, NUMBERS, COMBO_MULTIPLIERS,
     MONSTER_STARTING_HAND, MONSTER_DRAW_PER_TURN, MONSTER_PLAY_PER_TURN,
-    MONSTER_BASE_HP, FIGHTS_PER_FLOOR,
+    MONSTER_BASE_HP, BOSS_HP, FIGHTS_PER_FLOOR,
 )
 
 Card = namedtuple("Card", ["suit", "number", "function"])
@@ -90,6 +90,8 @@ def colored(text, suit):
 def card_str(card):
     if card.function in SPECIAL_NAMES:
         label = f"{SPECIAL_NAMES[card.function]} {card.number}"
+    elif card.function in MONSTER_SPECIAL_NAMES:
+        label = f"{MONSTER_SPECIAL_NAMES[card.function]} {card.number}"
     else:
         label = f"{card.function} {card.number}"
     return colored(label, card.suit)
@@ -122,6 +124,17 @@ def hand_display(cards):
     return top + "\n" + bot
 
 
+# ─── Monster Specials ───
+
+MONSTER_SPECIAL_TYPES = ["heavy", "mend", "rage", "armor"]
+MONSTER_SPECIAL_NAMES = {
+    "heavy": "HEAVY",
+    "mend":  "MEND",
+    "rage":  "RAGE",
+    "armor": "ARMOR",
+}
+
+
 # ─── Deck Generation ───
 
 def make_starting_deck():
@@ -140,12 +153,16 @@ def make_starting_deck():
     return deck
 
 
-def make_monster_deck():
+def make_monster_deck(is_boss=False):
     pool = [(s, n) for s in SUITS for n in NUMBERS]
     chosen = random.sample(pool, 20)
     deck = []
+    special_pct = 50 if is_boss else 20
     for suit, num in chosen:
-        fn = random.choice(["atk", "def"])
+        if random.randint(1, 100) <= special_pct:
+            fn = random.choice(MONSTER_SPECIAL_TYPES)
+        else:
+            fn = random.choice(["atk", "def"])
         deck.append(Card(suit, num, fn))
     random.shuffle(deck)
     return deck
@@ -207,20 +224,23 @@ class GameState:
         self.sort_mode = "number"
         self.artifacts = []
 
-    def start_fight(self, fight_num):
+    def start_fight(self, fight_num, is_boss=False):
         self.fight_num = fight_num
+        self.is_boss = is_boss
         self.draw_pile = list(self.deck)
         random.shuffle(self.draw_pile)
         self.discard_pile = []
         self.hand = []
         self.shield = 0
 
-        self.monster_hp = MONSTER_BASE_HP
+        self.monster_hp = BOSS_HP if is_boss else MONSTER_BASE_HP
+        self.monster_max_hp = self.monster_hp
         self.sharpen_turns = 0
         self.curse_turns = 0
         self.last_combo_damage = 0
         self.combos_this_turn = 0
-        monster_deck = make_monster_deck()
+        self.monster_rage = False
+        monster_deck = make_monster_deck(is_boss)
         self.monster_hand = monster_deck[:MONSTER_STARTING_HAND]
         self.monster_draw_pile = monster_deck[MONSTER_STARTING_HAND:]
 
@@ -266,7 +286,7 @@ def display_state(gs):
     if gs.artifacts:
         art_names = [ARTIFACTS[a]["name"] for a in gs.artifacts]
         print(f"  Artifacts: {', '.join(art_names)}")
-    print(f"  MONSTER: HP {gs.monster_hp}/{MONSTER_BASE_HP}")
+    print(f"  MONSTER: HP {gs.monster_hp}/{gs.monster_max_hp}" + (" [BOSS]" if gs.is_boss else ""))
     print(f"──────────────────────────────────────")
     print(f"  Monster hand: " + " ".join(f"[{card_str(c)}]" for c in gs.monster_hand))
     print(f"──────────────────────────────────────")
@@ -511,7 +531,10 @@ def monster_turn(gs):
         gs.monster_hand.remove(card)
 
         if card.function == "atk":
-            raw_dmg = card.number
+            raw_dmg = card.number * 2
+            if gs.monster_rage:
+                raw_dmg *= 2
+                gs.monster_rage = False
             if "glass_cannon" in gs.artifacts:
                 raw_dmg = int(raw_dmg * 1.5)
             absorbed = min(gs.shield, raw_dmg)
@@ -523,6 +546,31 @@ def monster_turn(gs):
                 print(f" (shield absorbs {absorbed}, you take {actual})")
             else:
                 print()
+        elif card.function == "heavy":
+            raw_dmg = card.number * 3
+            if gs.monster_rage:
+                raw_dmg *= 2
+                gs.monster_rage = False
+            if "glass_cannon" in gs.artifacts:
+                raw_dmg = int(raw_dmg * 1.5)
+            absorbed = min(gs.shield, raw_dmg)
+            gs.shield -= absorbed
+            actual = raw_dmg - absorbed
+            gs.player_hp -= actual
+            print(f"\n  Monster plays {card_str(card)} → {C['bold']}{raw_dmg} HEAVY dmg{C['reset']}", end="")
+            if absorbed > 0:
+                print(f" (shield absorbs {absorbed}, you take {actual})")
+            else:
+                print()
+        elif card.function == "mend":
+            heal = card.number * 2
+            gs.monster_hp = min(gs.monster_hp + heal, gs.monster_max_hp)
+            print(f"\n  Monster plays {card_str(card)} → {C['bold']}heals {heal} HP{C['reset']}")
+        elif card.function == "rage":
+            gs.monster_rage = True
+            print(f"\n  Monster plays {card_str(card)} → {C['bold']}RAGE! next attack x2{C['reset']}")
+        elif card.function == "armor":
+            print(f"\n  Monster plays {card_str(card)} → {C['bold']}gains {card.number} armor{C['reset']}")
         else:
             print(f"\n  Monster plays {card_str(card)} → defense (no effect on you)")
 

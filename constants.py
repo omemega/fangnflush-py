@@ -54,7 +54,8 @@ COMBO_MULTIPLIERS = {
 MONSTER_STARTING_HAND = 5    # cards in hand at fight start
 MONSTER_DRAW_PER_TURN = 1    # cards drawn per turn
 MONSTER_PLAY_PER_TURN = 1    # cards played per turn (random from hand)
-MONSTER_BASE_HP = 60         # TODO: playtest — tier 1 basic monster HP
+MONSTER_BASE_HP = 200        # TODO: playtest — tier 1 basic monster HP
+BOSS_HP = 700                # TODO: playtest — boss HP
 MONSTER_CARD_PLAY = "random" # selection method: random from hand
 
 # ──────────────────────────────────
