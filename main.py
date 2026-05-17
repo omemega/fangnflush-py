@@ -116,7 +116,7 @@ def make_monster_deck():
 
 # ─── Combo Detection ───
 
-def detect_combo(cards, artifacts=None):
+def detect_combo(cards):
     if len(cards) == 0:
         return "single", 1.0
     if len(cards) == 1:
@@ -252,6 +252,9 @@ def get_action(gs, plays_left, discards_left):
             print(f"  Sorted {sort_label}:")
             print(hand_display(gs.hand))
             continue
+        if raw.startswith("d ") and discards_left <= 0:
+            print("  No swaps left.")
+            continue
         if raw.startswith("d ") and discards_left > 0:
             try:
                 indices = [int(x) - 1 for x in raw[2:].split()]
@@ -333,7 +336,7 @@ COMBO_NAMES = {
 
 def play_combo(gs, indices):
     cards = [gs.hand[i] for i in indices]
-    combo_type, mult = detect_combo(cards, gs.artifacts)
+    combo_type, mult = detect_combo(cards)
     bonus_msgs = []
 
     # Artifact: pair_boost
@@ -452,7 +455,7 @@ def run_fight(gs, fight_num):
                 print(hand_display(gs.hand))
                 continue
             cards = [gs.hand[i] for i in indices]
-            combo_type, _ = detect_combo(cards, gs.artifacts)
+            combo_type, _ = detect_combo(cards)
             if combo_type is None:
                 print("  Invalid combo. Single cards must be played one at a time.")
                 continue
