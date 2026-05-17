@@ -12,6 +12,8 @@ HP_RECOVERY = 32             # TODO: playtest — fixed heal after each fight
 HAND_DRAW = 4                # N: cards drawn per turn
 HAND_MAX = 7                 # X: max hand size
 HAND_KEEP = 3                # Y: cards kept at end of turn
+PLAYS_PER_TURN = 2           # max combo/single plays per turn
+DISCARDS_PER_TURN = 2        # max discard-redraw per turn
 STARTING_DECK_SIZE = 15      # initial deck size
 ARTIFACT_SLOTS = 8           # shared between artifacts + consumables
 
@@ -52,17 +54,17 @@ COMBO_MULTIPLIERS = {
 MONSTER_STARTING_HAND = 5    # cards in hand at fight start
 MONSTER_DRAW_PER_TURN = 1    # cards drawn per turn
 MONSTER_PLAY_PER_TURN = 1    # cards played per turn (random from hand)
-MONSTER_BASE_HP = 50         # TODO: playtest — tier 1 basic monster HP
+MONSTER_BASE_HP = 60         # TODO: playtest — tier 1 basic monster HP
 MONSTER_CARD_PLAY = "random" # selection method: random from hand
 
 # ──────────────────────────────────
 # FIGHT FLOW
 # ──────────────────────────────────
-# 1. Player turn: draw N → play combos (unlimited) → discard to Y
+# 1. Player turn: draw N → discard-redraw (2x) → play combos (2x) → keep Y
 # 2. Monster turn: draw 1, play 1 (random from hand)
 # 3. Shield absorbs monster damage, remainder hits HP
 # 4. Repeat until monster or player HP <= 0
-# 5. After fight: heal HP_RECOVERY_PCT of max HP
+# 5. After fight: heal HP_RECOVERY
 
 # ──────────────────────────────────
 # DECK CYCLING
