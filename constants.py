@@ -8,7 +8,7 @@ All tunable values in one place. Change here, affects everywhere.
 # PLAYER
 # ──────────────────────────────────
 PLAYER_MAX_HP = 80           # TODO: playtest — starting/max HP
-HP_RECOVERY = 32             # TODO: playtest — fixed heal after each fight
+HP_RECOVERY = 10             # TODO: playtest — fixed heal after each fight
 HAND_DRAW = 4                # N: cards drawn per turn
 HAND_MAX = 7                 # X: max hand size
 HAND_KEEP = 3                # Y: cards kept at end of turn
@@ -46,7 +46,7 @@ COMBO_MULTIPLIERS = {
 # Player: sum of attack card numbers in combo × combo multiplier = damage
 # Shield: sum of defense card numbers in combo × combo multiplier = shield
 # Monster: single card number × 1 = damage (no combos)
-# Special cards: effect triggers in combo, number contributes to combo type but NOT to damage/shield sum
+# Special cards: effect triggers solo or in combo, number contributes to combo type but NOT to damage/shield sum
 
 # ──────────────────────────────────
 # MONSTER (basic, tier 1)

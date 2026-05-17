@@ -37,12 +37,39 @@ ARTIFACTS = {
         "name": "Low Power",
         "desc": "Cards numbered 3 or below: multiplier +1.0",
     },
+    "glass_cannon": {
+        "name": "Glass Cannon",
+        "desc": "All damage x1.5, but you take x1.5 damage too",
+    },
+    "thick_skin": {
+        "name": "Thick Skin",
+        "desc": "Shield persists between turns (doesn't reset)",
+    },
+    "combo_chain": {
+        "name": "Combo Chain",
+        "desc": "If both plays are combos (not singles), +0.5 mult to the 2nd",
+    },
 }
 
-# ─── Shelved Artifacts (not yet balanced) ───
-# "red_fury":   3+ red cards in combo: multiplier +0.5       — too weak
-# "high_wild":  Cards 7+: count as any suit for flush        — too strong
-# "mulligan":   Discard N draw N, costs 5 HP each            — too complex
+# ─── Special Cards ───
+
+SPECIAL_TYPES = ["windfall", "bloodpact", "sharpen", "curse", "mirror", "recycle"]
+SPECIAL_NAMES = {
+    "windfall":  "Windfall",
+    "bloodpact": "BloodPact",
+    "sharpen":   "Sharpen",
+    "curse":     "Curse",
+    "mirror":    "Mirror",
+    "recycle":   "Recycle",
+}
+SPECIAL_DESCS = {
+    "windfall":  "Draw 2",
+    "bloodpact": "Lose HP = card number, draw 3",
+    "sharpen":   "+0.5 mult for 2 turns",
+    "curse":     "Enemy takes 3 dmg/turn for 3 turns",
+    "mirror":    "Copy last combo's damage again",
+    "recycle":   "Discard hand, draw 5",
+}
 
 # ANSI colors
 C = {
@@ -61,8 +88,11 @@ def colored(text, suit):
 
 
 def card_str(card):
-    fn = "atk" if card.function == "atk" else "def"
-    return colored(f"{fn} {card.number}", card.suit)
+    if card.function in SPECIAL_NAMES:
+        label = f"{SPECIAL_NAMES[card.function]} {card.number}"
+    else:
+        label = f"{card.function} {card.number}"
+    return colored(label, card.suit)
 
 
 def card_str_short(card):
@@ -76,8 +106,10 @@ def hand_display(cards):
     top_parts = []
     bot_parts = []
     for i, c in enumerate(cards):
-        fn = "atk" if c.function == "atk" else "def"
-        label = f"{fn} {c.number}"
+        if c.function in SPECIAL_NAMES:
+            label = f"{SPECIAL_NAMES[c.function]} {c.number}"
+        else:
+            label = f"{c.function} {c.number}"
         cell = f"[{label}]"
         top_parts.append(colored(cell, c.suit))
         pad = len(cell)
@@ -97,7 +129,12 @@ def make_starting_deck():
     chosen = random.sample(pool, STARTING_DECK_SIZE)
     deck = []
     for i, (suit, num) in enumerate(chosen):
-        fn = "atk" if i < 10 else "def"
+        if i < 10:
+            fn = "atk"
+        elif i < 13:
+            fn = "def"
+        else:
+            fn = random.choice(SPECIAL_TYPES)
         deck.append(Card(suit, num, fn))
     random.shuffle(deck)
     return deck
@@ -179,6 +216,10 @@ class GameState:
         self.shield = 0
 
         self.monster_hp = MONSTER_BASE_HP
+        self.sharpen_turns = 0
+        self.curse_turns = 0
+        self.last_combo_damage = 0
+        self.combos_this_turn = 0
         monster_deck = make_monster_deck()
         self.monster_hand = monster_deck[:MONSTER_STARTING_HAND]
         self.monster_draw_pile = monster_deck[MONSTER_STARTING_HAND:]
@@ -351,11 +392,27 @@ def play_combo(gs, indices):
             mult += 1.0
             bonus_msgs.append("Low Power: +1.0 mult")
 
+    # Buff: sharpen
+    if gs.sharpen_turns > 0:
+        mult += 0.5
+        bonus_msgs.append(f"Sharpen: +0.5 mult ({gs.sharpen_turns} turns left)")
+
+    # Artifact: combo_chain (2nd play bonus)
+    if "combo_chain" in gs.artifacts and gs.combos_this_turn >= 1 and combo_type != "single":
+        mult += 0.5
+        bonus_msgs.append("Combo Chain: +0.5 mult (2nd combo)")
+
     atk_sum = sum(c.number for c in cards if c.function == "atk")
     def_sum = sum(c.number for c in cards if c.function == "def")
 
     damage = int(atk_sum * mult)
     shield = int(def_sum * mult)
+
+    # Artifact: glass_cannon
+    if "glass_cannon" in gs.artifacts:
+        damage = int(damage * 1.5)
+        if damage > 0:
+            bonus_msgs.append("Glass Cannon: dmg x1.5")
 
     name = COMBO_NAMES.get(combo_type, combo_type)
     print(f"\n  >> {name} (x{mult}) — ", end="")
@@ -365,11 +422,37 @@ def play_combo(gs, indices):
 
     if damage > 0:
         gs.monster_hp -= damage
-        print(f"     Damage: {atk_sum} x {mult} = {damage}")
+        print(f"     Damage: {damage}")
     if shield > 0:
         gs.shield += shield
-        print(f"     Shield: {def_sum} x {mult} = +{shield}")
-    if damage == 0 and shield == 0:
+        print(f"     Shield: +{shield}")
+
+    # Special card effects
+    specials = [c for c in cards if c.function in SPECIAL_NAMES]
+    for sc in specials:
+        if sc.function == "windfall":
+            print(f"     {C['bold']}[Windfall: draw 2]{C['reset']}")
+        elif sc.function == "bloodpact":
+            cost = sc.number
+            gs.player_hp -= cost
+            print(f"     {C['bold']}[BloodPact: -{cost} HP, draw 3]{C['reset']}")
+        elif sc.function == "sharpen":
+            gs.sharpen_turns += 2
+            print(f"     {C['bold']}[Sharpen: +0.5 mult for 2 turns]{C['reset']}")
+        elif sc.function == "curse":
+            gs.curse_turns += 3
+            print(f"     {C['bold']}[Curse: 3 dmg/turn for 3 turns]{C['reset']}")
+        elif sc.function == "mirror":
+            mirror_dmg = gs.last_combo_damage
+            if mirror_dmg > 0:
+                gs.monster_hp -= mirror_dmg
+                print(f"     {C['bold']}[Mirror: repeat {mirror_dmg} dmg]{C['reset']}")
+            else:
+                print(f"     {C['bold']}[Mirror: no previous combo to copy]{C['reset']}")
+        elif sc.function == "recycle":
+            print(f"     {C['bold']}[Recycle: discard hand, draw 5]{C['reset']}")
+
+    if not specials and damage == 0 and shield == 0:
         print(f"     (no atk/def value)")
 
     # Artifact: blood_edge
@@ -384,16 +467,37 @@ def play_combo(gs, indices):
         gs.monster_hp -= bonus_dmg
         print(f"     {C['bold']}[Iron Wall: {bonus_dmg} bonus dmg]{C['reset']}")
 
+    gs.last_combo_damage = damage
+    if combo_type != "single":
+        gs.combos_this_turn += 1
+
     for i in sorted(indices, reverse=True):
         gs.discard_pile.append(gs.hand.pop(i))
 
-    # Artifact: straight_draw (after cards removed so draw isn't blocked by hand limit)
+    # Post-removal effects (need hand space)
     if "straight_draw" in gs.artifacts and combo_type.startswith("straight"):
         gs.draw_cards(2)
         print(f"     {C['bold']}[Straight Draw: +2 cards]{C['reset']}")
+    for sc in specials:
+        if sc.function == "windfall":
+            gs.draw_cards(2)
+        elif sc.function == "bloodpact":
+            gs.draw_cards(3)
+        elif sc.function == "recycle":
+            while gs.hand:
+                gs.discard_pile.append(gs.hand.pop())
+            gs.draw_cards(5)
 
 
 def monster_turn(gs):
+    # Curse tick
+    if gs.curse_turns > 0:
+        gs.monster_hp -= 3
+        gs.curse_turns -= 1
+        print(f"\n  {C['bold']}[Curse: monster takes 3 dmg ({gs.curse_turns} turns left)]{C['reset']}")
+        if gs.monster_hp <= 0:
+            return
+
     gs.monster_draw()
 
     if not gs.monster_hand:
@@ -408,6 +512,8 @@ def monster_turn(gs):
 
         if card.function == "atk":
             raw_dmg = card.number
+            if "glass_cannon" in gs.artifacts:
+                raw_dmg = int(raw_dmg * 1.5)
             absorbed = min(gs.shield, raw_dmg)
             gs.shield -= absorbed
             actual = raw_dmg - absorbed
@@ -476,25 +582,70 @@ def run_fight(gs, fight_num):
 
         monster_turn(gs)
 
+        if gs.monster_hp <= 0:
+            print(f"\n  {C['bold']}VICTORY!{C['reset']} Monster defeated in {turn} turns.")
+            return "win"
+
         if gs.player_hp <= 0:
             print(f"\n  {C['bold']}DEFEATED!{C['reset']} You died on turn {turn}.")
             return "lose"
 
-        gs.shield = 0
+        if "thick_skin" not in gs.artifacts:
+            gs.shield = 0
+        if gs.sharpen_turns > 0:
+            gs.sharpen_turns -= 1
+        gs.combos_this_turn = 0
         get_discard_input(gs)
 
 
-def choose_artifact():
-    options = random.sample(list(ARTIFACTS.keys()), 3)
-    print(f"\n{C['bold']}  Choose your starting artifact:{C['reset']}")
+def choose_artifact(gs, exclude=None):
+    available = [k for k in ARTIFACTS if k not in (exclude or [])]
+    options = random.sample(available, min(3, len(available)))
+    print(f"\n{C['bold']}  Choose an artifact:{C['reset']}")
     for i, key in enumerate(options):
         art = ARTIFACTS[key]
         print(f"   {i+1}. {art['name']} — {art['desc']}")
+    valid = [str(i+1) for i in range(len(options))]
     while True:
-        raw = input("  Pick (1/2/3): ").strip()
-        if raw in ("1", "2", "3"):
+        raw = input(f"  Pick ({'/'.join(valid)}): ").strip()
+        if raw in valid:
             return options[int(raw) - 1]
-        print("  Enter 1, 2, or 3.")
+        print(f"  Enter {', '.join(valid)}.")
+
+
+def generate_reward_cards():
+    cards = []
+    for _ in range(3):
+        suit = random.choice(SUITS)
+        num = random.randint(1, 13)
+        fn = random.choices(
+            ["atk", "def"] + SPECIAL_TYPES,
+            weights=[40, 20] + [8] * len(SPECIAL_TYPES),
+        )[0]
+        cards.append(Card(suit, num, fn))
+    return cards
+
+
+def post_fight_reward(gs):
+    print(f"\n{C['bold']}  REWARD — Choose a card to add to your deck:{C['reset']}")
+    options = generate_reward_cards()
+    for i, c in enumerate(options):
+        desc = ""
+        if c.function in SPECIAL_DESCS:
+            desc = f" ({SPECIAL_DESCS[c.function]})"
+        print(f"   {i+1}. {card_str(c)}{desc}")
+    print(f"   4. Skip")
+    while True:
+        raw = input("  Pick (1/2/3/4): ").strip()
+        if raw == "4":
+            print("  Skipped.")
+            return
+        if raw in ("1", "2", "3"):
+            chosen = options[int(raw) - 1]
+            gs.deck.append(chosen)
+            print(f"  Added {card_str(chosen)} to deck. Deck size: {len(gs.deck)}")
+            return
+        print("  Enter 1, 2, 3, or 4.")
 
 
 def main():
@@ -502,7 +653,7 @@ def main():
     print(f"  3 fights, survive them all.\n")
 
     gs = GameState()
-    chosen = choose_artifact()
+    chosen = choose_artifact(gs)
     gs.artifacts.append(chosen)
     print(f"  Equipped: {ARTIFACTS[chosen]['name']}\n")
 
@@ -520,12 +671,18 @@ def main():
             print(f"\n  GAME OVER — survived {fight - 1}/{FIGHTS_PER_FLOOR} fights.")
             return
 
-        if fight < FIGHTS_PER_FLOOR:
-            gs.player_hp = min(gs.player_hp + HP_RECOVERY, PLAYER_MAX_HP)
-            print(f"  Healed +{HP_RECOVERY} → HP {gs.player_hp}/{PLAYER_MAX_HP}")
+        gs.player_hp = min(gs.player_hp + HP_RECOVERY, PLAYER_MAX_HP)
+        print(f"  Healed +{HP_RECOVERY} → HP {gs.player_hp}/{PLAYER_MAX_HP}")
+        post_fight_reward(gs)
+
+        if fight == FIGHTS_PER_FLOOR:
+            new_art = choose_artifact(gs, exclude=gs.artifacts)
+            gs.artifacts.append(new_art)
+            print(f"  Equipped: {ARTIFACTS[new_art]['name']}")
 
     print(f"\n{C['bold']}  FLOOR CLEARED!{C['reset']} All {FIGHTS_PER_FLOOR} fights won.")
     print(f"  Final HP: {gs.player_hp}/{PLAYER_MAX_HP}")
+    print(f"  Deck: {len(gs.deck)} cards | Artifacts: {', '.join(ARTIFACTS[a]['name'] for a in gs.artifacts)}")
 
 
 if __name__ == "__main__":
