@@ -43,7 +43,7 @@ ARTIFACTS = {
     },
     "thick_skin": {
         "name": "Thick Skin",
-        "desc": "Shield persists between turns (doesn't reset)",
+        "desc": "Keep up to 5 shield between turns",
     },
     "combo_chain": {
         "name": "Combo Chain",
@@ -590,7 +590,9 @@ def run_fight(gs, fight_num):
             print(f"\n  {C['bold']}DEFEATED!{C['reset']} You died on turn {turn}.")
             return "lose"
 
-        if "thick_skin" not in gs.artifacts:
+        if "thick_skin" in gs.artifacts:
+            gs.shield = min(gs.shield, 5)
+        else:
             gs.shield = 0
         if gs.sharpen_turns > 0:
             gs.sharpen_turns -= 1
